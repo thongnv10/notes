@@ -1,0 +1,73 @@
+// Nếu LB RTMP dùng pull
+// Nếu LB HLS dùng push
+
+// Phân tải RTMP
+C1:
+exec ffmpeg -re -i rtmp://localhost/live/$name -c copy -f flv rtmp://192.168.100.201/live/$name; // Đẩy stream cùng tên sang server 
+
+Relay
+C2:
+
+pull rtmp://srv-orginal;
+Ý tưởng:
+                                        |            |
+                                        |Server Relay|
+                                        |    NGINX   |
+       |Server Orginal|
+  PLAY: HAProxy: 1935
+  POST: Nginx: 1936
+                                        |            |
+                                        |Server Relay|
+                                        |    NGINX   |
+
+Cấu hình HAProxy:
+
+listen stats
+    bind *:1234
+    mode http
+    stats enable
+    stats refresh 5s
+    stats show-node
+    stats hide-version
+    stats realm Haproxy\ Statistics
+    stats uri /
+    stats auth Username:Password
+    
+frontend ft_rtpm
+     bind *:1935
+     mode tcp
+     maxconn 1000
+     default_backend bk_rtmp
+ 
+backend bk_rtmp 
+     mode tcp
+     balance roundrobin
+     stick store-request src
+     stick-table type ip size 200k expire 20m
+     stick on src
+     # source 0.0.0.0 usesrc clientip
+     server media01 192.168.100.201:1935 check maxconn 500 weight 10
+     server media02 192.168.100.195:1935 check maxconn 500 weight 10
+
+     
+     
+// Phân tải HLS/DASH
+
+Cách 1: // Thêm vào file cấu hình HAProxy trên
+frontend ft_hls
+     bind *:80
+     mode http
+     maxconn 1000
+     default_backend bk_hls
+
+backend bk_hls 
+     mode http
+     balance roundrobin
+     server media01 192.168.100.196:80 check maxconn 500 weight 10
+     server media02 192.168.100.195:80 check maxconn 500 weight 10
+
+Cách 2:     
+     
+- 1 Server (srv1) nhận stream từ người dùng (NGINX-RTMP)
+- Chia sẻ folder HLS/DASH của srv1 cho các Web server
+- Phân tải cho các Web server
